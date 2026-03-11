@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile Web FPS</title>
-    <link rel="stylesheet" href="styles/style.css">
+    <title>Web FPS Game</title>
+    <link rel="stylesheet" href="./styles/style.css">
     
-    <!-- Import Maps for Three.js -->
     <script type="importmap">
         {
             "imports": {
@@ -17,43 +16,29 @@
         }
     </script>
     
-    <!-- NippleJS for Mobile Joystick -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 </head>
 <body>
-    <!-- Landscape Warning -->
-    <div id="landscape-warning">
-        Please rotate your device to Landscape Mode
-    </div>
+    <div id="landscape-warning">Please rotate your device to Landscape Mode</div>
 
-    <!-- Start Screen (Required to unlock audio in browsers) -->
     <div id="start-screen">
-        <button id="btn-start">START GAME</button>
-        <p>Loading assets...</p>
+        <h1 style="margin-bottom: 20px;">My FPS Game</h1>
+        <button id="btn-start" style="display: none;">START GAME</button>
+        <p id="loading-text">Loading Assets... Please wait</p>
     </div>
 
-    <!-- 3D Canvas Container -->
     <div id="game-container"></div>
 
-    <!-- UI Layer -->
     <div id="ui-layer">
-        <!-- Aim Crosshair -->
         <div id="crosshair"></div>
-
-        <!-- Left side: Movement Joystick -->
         <div id="joystick-zone"></div>
-
-        <!-- Right side: Look around area (invisible) -->
         <div id="look-zone"></div>
-
-        <!-- Action Buttons -->
         <div id="action-buttons">
             <button id="btn-fire">🔥</button>
             <button id="btn-jump">⬆️</button>
         </div>
     </div>
 
-    <!-- Game Logic -->
-    <script type="module" src="control.js"></script>
+    <script type="module" src="./control.js"></script>
 </body>
 </html>

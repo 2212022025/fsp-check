@@ -2,22 +2,28 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
 
-// --- Global Variables ---
+// --- GAME SETTINGS ---
+const WALK_SPEED = 12;
+const JUMP_FORCE = 12;
+const LOOK_SENSITIVITY = 0.004;
+
+// --- TWEAK YOUR GUN POSITION HERE ---
+// If your gun looks weird, change these numbers!
+const GUN_SCALE = 0.5; // Make model bigger/smaller
+const GUN_POS_X = 0.4; // Move Right/Left
+const GUN_POS_Y = -0.4; // Move Up/Down
+const GUN_POS_Z = -1.0; // Move Forward/Back
+
+// Global Variables
 let scene, camera, renderer, world;
-let playerBody, playerMesh; // physics body and visual mesh
-let moveData = { forward: 0, right: 0 }; // Joystick data
+let playerBody, gunModel, mapModel;
+let moveData = { x: 0, y: 0 }; 
 let isJumping = false;
 let audioListener, shootSound;
-let mapModel, gunModel;
-
-// Camera Look Variables
 let euler = new THREE.Euler(0, 0, 0, 'YXZ');
-let touchStartX, touchStartY;
-const lookSensitivity = 0.003;
 
-// Assets loaded tracking
 let loadedAssets = 0;
-const totalAssets = 3; // map, player, sound
+const totalAssets = 3; 
 
 init();
 
@@ -25,117 +31,136 @@ function init() {
     // 1. Setup Three.js Scene
     const container = document.getElementById('game-container');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky blue
-    scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+    scene.background = new THREE.Color(0x87CEEB); 
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 150);
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(100, 100, 50);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
-
+    // 2. Setup Camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    
+
+    // 3. Setup Renderer (FIXED FOR EXACT MAP COLORS)
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // THESE TWO LINES MAKE GLTF MODELS LOOK EXACTLY LIKE BLENDER:
+    renderer.outputColorSpace = THREE.SRGBColorSpace; 
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     container.appendChild(renderer.domElement);
 
-    // 2. Setup Cannon-es Physics World
+    // 4. Setup Lighting (Better visibility)
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    hemiLight.position.set(0, 200, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(50, 100, 50);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 50;
+    dirLight.shadow.camera.bottom = -50;
+    dirLight.shadow.camera.left = -50;
+    dirLight.shadow.camera.right = 50;
+    scene.add(dirLight);
+
+    // 5. Setup Physics World
     world = new CANNON.World();
-    world.gravity.set(0, -20, 0); // Earth gravity modified for game feel
+    world.gravity.set(0, -30, 0); // Snappy gravity
     
-    // Physics Material for friction/bounciness
     const physicsMaterial = new CANNON.Material('standard');
     const physicsContactMaterial = new CANNON.ContactMaterial(
-        physicsMaterial, physicsMaterial, { friction: 0.1, restitution: 0.0 }
+        physicsMaterial, physicsMaterial, { friction: 0.0, restitution: 0.0 }
     );
     world.addContactMaterial(physicsContactMaterial);
 
-    // Create a Flat Physics Ground (So player doesn't fall through map.glb)
+    // Invisible Physics Floor
     const groundShape = new CANNON.Plane();
     const groundBody = new CANNON.Body({ mass: 0, material: physicsMaterial });
     groundBody.addShape(groundShape);
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(groundBody);
 
-    // 3. Setup Player Physics (Capsule/Cylinder)
+    // 6. Setup Player Physics Capsule
     const radius = 1;
     const height = 2;
-    playerBody = new CANNON.Body({ mass: 5, material: physicsMaterial });
+    playerBody = new CANNON.Body({ mass: 5, material: physicsMaterial, fixedRotation: true });
     const sphereShape = new CANNON.Sphere(radius);
     playerBody.addShape(sphereShape, new CANNON.Vec3(0, radius, 0));
     playerBody.addShape(sphereShape, new CANNON.Vec3(0, radius + height, 0));
-    playerBody.position.set(0, 10, 0); // Spawn position above ground
-    playerBody.linearDamping = 0.9; // Prevent sliding forever
+    playerBody.position.set(0, 5, 0); // Drop player from sky
+    playerBody.linearDamping = 0.9;
     world.addBody(playerBody);
 
-    // 4. Load Assets
     loadAssets();
-
-    // 5. Setup Controls & Resize
     window.addEventListener('resize', onWindowResize);
 }
 
 function loadAssets() {
     const gltfLoader = new GLTFLoader();
 
-    // Load Map
-    gltfLoader.load('assets/models/map.glb', (gltf) => {
+    // LOAD MAP
+    gltfLoader.load('./assets/models/map.glb', (gltf) => {
         mapModel = gltf.scene;
+        // Make map cast/receive shadows
+        mapModel.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
         scene.add(mapModel);
         checkLoadStatus();
-    }, undefined, (e) => console.error("Map error", e));
+    }, undefined, (e) => console.error(e));
 
-    // Load Player/Gun Model
-    gltfLoader.load('assets/models/player.glb', (gltf) => {
+    // LOAD PLAYER/GUN
+    gltfLoader.load('./assets/models/player.glb', (gltf) => {
         gunModel = gltf.scene;
-        // Attach gun model to camera so it moves with view
-        gunModel.position.set(0.5, -0.5, -1.5); 
-        gunModel.scale.set(0.5, 0.5, 0.5);
+        
+        // TRUE FIRST PERSON VIEW CONFIGURATION:
+        gunModel.scale.set(GUN_SCALE, GUN_SCALE, GUN_SCALE);
+        gunModel.position.set(GUN_POS_X, GUN_POS_Y, GUN_POS_Z);
+        
+        // Sometimes models from blender face backwards. If your gun faces you, uncomment the line below:
+        // gunModel.rotation.set(0, Math.PI, 0); 
+
         camera.add(gunModel);
         scene.add(camera);
         checkLoadStatus();
-    }, undefined, (e) => console.error("Player error", e));
+    }, undefined, (e) => console.error(e));
 
-    // Audio Setup
+    // LOAD SOUND
     audioListener = new THREE.AudioListener();
     camera.add(audioListener);
     shootSound = new THREE.Audio(audioListener);
     
     const audioLoader = new THREE.AudioLoader();
-    audioLoader.load('assets/sound/shoot.mp3', (buffer) => {
+    audioLoader.load('./assets/sound/shoot.mp3', (buffer) => {
         shootSound.setBuffer(buffer);
-        shootSound.setVolume(0.5);
+        shootSound.setVolume(0.6);
         checkLoadStatus();
-    }, undefined, (e) => console.error("Sound error", e));
+    }, undefined, (e) => console.error(e));
 }
 
 function checkLoadStatus() {
     loadedAssets++;
     if (loadedAssets === totalAssets) {
-        document.querySelector('#start-screen p').style.display = 'none';
+        document.getElementById('loading-text').style.display = 'none';
         const startBtn = document.getElementById('btn-start');
         startBtn.style.display = 'block';
         
         startBtn.addEventListener('click', () => {
             document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'block'; // Show UI
             setupControls();
             
-            // Request full screen
             if (document.documentElement.requestFullscreen) {
                 document.documentElement.requestFullscreen();
             }
-            
-            animate(); // Start game loop
+            animate();
         });
     }
 }
 
 function setupControls() {
-    // 1. Movement Joystick (NippleJS)
+    // 1. JOYSTICK (Movement)
     const joystickOptions = {
         zone: document.getElementById('joystick-zone'),
         mode: 'static',
@@ -145,20 +170,19 @@ function setupControls() {
     const manager = nipplejs.create(joystickOptions);
     
     manager.on('move', (evt, data) => {
-        const angle = data.angle.radian;
-        const force = Math.min(data.distance / 50, 1); // Normalize 0 to 1
-        // Map joystick to forward/right vectors
-        moveData.forward = Math.sin(angle) * force;
-        moveData.right = Math.cos(angle) * force;
+        // NippleJS vector: x is right/left, y is up/down
+        moveData.x = data.vector.x; 
+        moveData.y = data.vector.y;
     });
 
     manager.on('end', () => {
-        moveData.forward = 0;
-        moveData.right = 0;
+        moveData.x = 0;
+        moveData.y = 0;
     });
 
-    // 2. Look Around (Touch Right Screen)
+    // 2. LOOK AROUND (Touch Right Screen)
     const lookZone = document.getElementById('look-zone');
+    let touchStartX, touchStartY;
     
     lookZone.addEventListener('touchstart', (e) => {
         touchStartX = e.touches[0].clientX;
@@ -172,11 +196,11 @@ function setupControls() {
         const deltaX = touchX - touchStartX;
         const deltaY = touchY - touchStartY;
 
-        euler.y -= deltaX * lookSensitivity; // Yaw (Left/Right)
-        euler.x -= deltaY * lookSensitivity; // Pitch (Up/Down)
+        euler.y -= deltaX * LOOK_SENSITIVITY; // Left/Right
+        euler.x -= deltaY * LOOK_SENSITIVITY; // Up/Down
 
-        // Clamp looking straight up or down
-        euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+        // Clamp Up/Down looking so camera doesn't flip over
+        euler.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, euler.x));
         
         camera.quaternion.setFromEuler(euler);
 
@@ -184,93 +208,98 @@ function setupControls() {
         touchStartY = touchY;
     });
 
-    // 3. Jump Button
+    // 3. JUMP
     document.getElementById('btn-jump').addEventListener('touchstart', () => {
-        // Only jump if velocity Y is close to 0 (touching ground)
-        if (Math.abs(playerBody.velocity.y) < 1) {
-            playerBody.velocity.y = 12; // Jump force
+        // Can only jump if Y velocity is nearly 0 (touching ground)
+        if (Math.abs(playerBody.velocity.y) < 1.5) {
+            playerBody.velocity.y = JUMP_FORCE;
         }
     });
 
-    // 4. Fire Button
+    // 4. FIRE
     document.getElementById('btn-fire').addEventListener('touchstart', shoot);
 }
 
 function shoot() {
-    // Play Sound
+    // Play sound
     if (shootSound.isPlaying) shootSound.stop();
     shootSound.play();
 
-    // Muzzle flash effect on gun
-    const flash = new THREE.PointLight(0xffaa00, 5, 5);
-    flash.position.set(0, 0, -2);
+    // Muzzle flash effect
+    const flash = new THREE.PointLight(0xffaa00, 5, 10);
+    flash.position.set(0.4, -0.4, -2); // near the gun barrel
     camera.add(flash);
     setTimeout(() => { camera.remove(flash); }, 50);
 
-    // Raycast for bullet physics/hit marker
+    // Recoil Animation (moves gun back, then forward)
+    if(gunModel) {
+        gunModel.position.z += 0.1; 
+        setTimeout(() => { gunModel.position.z -= 0.1; }, 50);
+    }
+
+    // Raycaster for Bullet Holes
     const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); // Center of screen
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera); 
 
-    // Check intersection with map
-    const intersects = raycaster.intersectObject(mapModel, true);
-
-    if (intersects.length > 0) {
-        const hitPoint = intersects[0].point;
-        
-        // Create bullet hole / spark effect
-        const hitGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-        const hitMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const hitMesh = new THREE.Mesh(hitGeo, hitMat);
-        hitMesh.position.copy(hitPoint);
-        scene.add(hitMesh);
-        
-        // Remove hit marker after 2 seconds
-        setTimeout(() => { scene.remove(hitMesh); }, 2000);
+    if (mapModel) {
+        const intersects = raycaster.intersectObject(mapModel, true);
+        if (intersects.length > 0) {
+            const hitPoint = intersects[0].point;
+            const hitNormal = intersects[0].face.normal;
+            
+            // Create bullet hole / spark
+            const hitGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+            const hitMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+            const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+            
+            // Push slightly out from wall to prevent Z-fighting
+            hitMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
+            scene.add(hitMesh);
+            
+            // Remove after 2 seconds
+            setTimeout(() => { scene.remove(hitMesh); }, 2000);
+        }
     }
 }
 
 function updatePhysics() {
-    // Apply movement from joystick relative to camera direction
-    if (moveData.forward !== 0 || moveData.right !== 0) {
-        const speed = 15;
-        
-        // Get camera direction (ignoring up/down pitch)
-        const direction = new THREE.Vector3();
-        camera.getWorldDirection(direction);
-        direction.y = 0;
-        direction.normalize();
+    // 1. Calculate Forward vector based on where camera is looking
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    forward.y = 0; // Don't fly up/down
+    forward.normalize();
 
-        // Get right vector
-        const right = new THREE.Vector3();
-        right.crossVectors(camera.up, direction).normalize();
+    // 2. Calculate Right vector based on where camera is looking
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    right.y = 0;
+    right.normalize();
 
-        // Calculate final velocity vector
-        const moveVector = new THREE.Vector3()
-            .addScaledVector(direction, moveData.forward)
-            .addScaledVector(right, -moveData.right);
+    // 3. Combine Joystick input with camera direction
+    const moveVector = new THREE.Vector3();
+    moveVector.addScaledVector(forward, moveData.y); // Up on joystick moves forward
+    moveVector.addScaledVector(right, moveData.x);   // Right on joystick moves right
+    moveVector.normalize().multiplyScalar(WALK_SPEED);
 
-        // Apply to physics body (keep Y velocity for gravity/falling)
-        playerBody.velocity.x = moveVector.x * speed;
-        playerBody.velocity.z = moveVector.z * speed;
-    }
+    // Apply to Physics Body (Keep current Y velocity for jumping/gravity)
+    playerBody.velocity.x = moveVector.x;
+    playerBody.velocity.z = moveVector.z;
 }
 
 function animate() {
     requestAnimationFrame(animate);
 
-    // Step Physics World
+    // Step Physics
     world.step(1 / 60);
     updatePhysics();
 
-    // Sync Camera position to Physics Body
-    // +2 on Y axis puts the camera at "eye level" of the physics capsule
+    // Lock camera to player physics body (at Eye Height)
+    const eyeHeight = 2.5; 
     camera.position.set(
         playerBody.position.x,
-        playerBody.position.y + 2,
+        playerBody.position.y + eyeHeight,
         playerBody.position.z
     );
 
-    // Render Scene
+    // Render Frame
     renderer.render(scene, camera);
 }
 
