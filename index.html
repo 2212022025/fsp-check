@@ -2,43 +2,654 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Web FPS Game</title>
-    <link rel="stylesheet" href="./styles/style.css">
-    
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
-            }
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Pluse Tournament</title>
+    <style>
+        /* CSS Variables for Black & White Theme */
+        :root {
+            --bg-color: #050505;
+            --surface-color: #111111;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --border-color: #333333;
+            --accent: #ffffff;
+            --accent-invert: #000000;
         }
-    </script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Loading Screen */
+        #loader-screen {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .loader-text {
+            font-size: 1.5rem;
+            letter-spacing: 2px;
+            font-weight: 300;
+        }
+
+        .dots::after {
+            content: '';
+            animation: dot-blink 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dot-blink {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+
+        /* Main App Container */
+        #app-container {
+            display: none; /* Hidden until loaded */
+            width: 100%;
+            max-width: 480px;
+            background-color: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(255, 255, 255, 0.02);
+            animation: fadeIn 0.8s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Ended View */
+        #ended-view {
+            display: none;
+            text-align: center;
+            padding: 40px 10px;
+        }
+
+        #ended-view h2 {
+            font-size: 1.5rem;
+            color: var(--text-main);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            line-height: 1.5;
+            border: 2px solid var(--border-color);
+            padding: 20px;
+            border-radius: 4px;
+        }
+
+        /* Form Header */
+        .form-header {
+            text-align: center;
+            margin-bottom: 25px;
+            border-bottom: 1px dashed var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        .form-header h1 {
+            font-size: 1.6rem;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-header .date {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Form Elements */
+        .input-group {
+            margin-bottom: 18px;
+        }
+
+        .section-label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="text"],
+        input[type="tel"] {
+            width: 100%;
+            padding: 14px;
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: border 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* Custom Radio Buttons for Game Selection */
+        .radio-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            transition: color 0.3s;
+        }
+
+        .radio-label input[type="radio"] {
+            display: none;
+        }
+
+        .custom-radio {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border-color);
+            border-radius: 50%;
+            margin-right: 12px;
+            position: relative;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+
+        .radio-label input[type="radio"]:checked + .custom-radio {
+            border-color: var(--accent);
+        }
+
+        .radio-label input[type="radio"]:checked + .custom-radio::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent);
+            border-radius: 50%;
+        }
+
+        .radio-label input[type="radio"]:checked ~ span,
+        .radio-label input[type="radio"]:checked + .custom-radio + span {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        /* Captcha */
+        .captcha-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid var(--border-color);
+            background-color: #0a0a0a;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .captcha-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: var(--text-main);
+        }
+
+        .captcha-label input[type="checkbox"] {
+            display: none;
+        }
+
+        .custom-checkbox {
+            width: 22px;
+            height: 22px;
+            border: 2px solid var(--border-color);
+            border-radius: 3px;
+            margin-right: 12px;
+            position: relative;
+            background-color: transparent;
+            transition: all 0.3s;
+        }
+
+        .captcha-label input[type="checkbox"]:checked + .custom-checkbox {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .captcha-label input[type="checkbox"]:checked + .custom-checkbox::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 6px;
+            width: 5px;
+            height: 10px;
+            border: solid var(--accent-invert);
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .captcha-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .captcha-logo img, .captcha-logo svg {
+            width: 24px;
+            margin-bottom: 3px;
+        }
+
+        /* File Upload */
+        .file-upload-wrapper {
+            border: 1px dashed var(--border-color);
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .file-upload-wrapper label {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        input[type="file"] {
+            color: var(--text-main);
+            font-size: 0.85rem;
+            max-width: 100%;
+        }
+
+        .fake-progress {
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            display: none;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 2px;
+            background-color: var(--accent);
+            margin-top: 5px;
+            transition: width 0.2s ease;
+        }
+
+        /* Submit Button */
+        button[type="submit"] {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--accent);
+            color: var(--accent-invert);
+            border: none;
+            font-size: 1.1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #dddddd;
+        }
+
+        button[type="submit"]:disabled {
+            background-color: #333;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        /* Rejection Screen */
+        #rejection-screen {
+            display: none;
+            text-align: center;
+        }
+
+        .reject-title {
+            font-size: 1.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            text-decoration: underline;
+            text-decoration-color: var(--border-color);
+        }
+
+        .danger-box {
+            border: 1px solid var(--text-main);
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 25px;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(255, 255, 255, 0.03),
+                rgba(255, 255, 255, 0.03) 10px,
+                rgba(0, 0, 0, 0) 10px,
+                rgba(0, 0, 0, 0) 20px
+            );
+        }
+
+        .danger-box h3 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: #ff4c4c; /* Slight red tint just to emphasize danger, optional */
+        }
+
+        .danger-box p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Accordion / FAQ */
+        .accordion {
+            text-align: left;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            width: 100%;
+            padding: 15px;
+            background-color: transparent;
+            color: var(--text-main);
+            border: none;
+            text-align: left;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .accordion-header::after {
+            content: '+';
+            font-size: 1.2rem;
+        }
+
+        .accordion-header.active::after {
+            content: '-';
+        }
+
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            background-color: #0a0a0a;
+        }
+
+        .accordion-content p {
+            padding: 15px;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .accordion-content strong {
+            color: var(--text-main);
+        }
+    </style>
 </head>
 <body>
-    <div id="landscape-warning">Please rotate your device to Landscape Mode</div>
 
-    <div id="start-screen">
-        <h1 style="margin-bottom: 20px;">My FPS Game</h1>
-        <button id="btn-start" style="display: none;">START GAME</button>
-        <p id="loading-text">Loading Assets... Please wait</p>
+    <!-- Loading Animation -->
+    <div id="loader-screen">
+        <div class="loader-text">Loading Assets<span class="dots"></span></div>
     </div>
 
-    <div id="game-container"></div>
-
-    <div id="ui-layer">
-        <div id="crosshair"></div>
-        <div id="joystick-zone"></div>
-        <div id="look-zone"></div>
-        <div id="action-buttons">
-            <button id="btn-fire">🔥</button>
-            <button id="btn-jump">⬆️</button>
+    <!-- Main Content -->
+    <div id="app-container">
+        
+        <!-- ENTIRE FORM ENDED VIEW (Only shows if past March 12, 2026) -->
+        <div id="ended-view">
+            <h2>Participation Form Has been Ended</h2>
         </div>
+        
+        <!-- Registration Form View -->
+        <div id="form-view">
+            
+            <div class="form-header">
+                <h1>Connect Pluse Tournament (15 March 2026 )</h1>
+                <p class="date">Registration Ends on: 12 March 2026</p>
+            </div>
+
+            <form id="tournament-form">
+                <!-- User Details -->
+                <div class="input-group">
+                    <input type="text" id="username" placeholder="Username" required>
+                </div>
+                <div class="input-group">
+                    <!-- Changed from type="email" to type="text" so '@' is not mandatory -->
+                    <input type="text" id="email" placeholder="E-mail ID" required>
+                </div>
+                <div class="input-group">
+                    <input type="tel" id="mobile" placeholder="Mobile Number (Optional)">
+                </div>
+                <div class="input-group">
+                    <input type="text" id="server" placeholder="Server Name" required>
+                </div>
+
+                <!-- Game Selection -->
+                <div class="input-group">
+                    <span class="section-label">Select Game:</span>
+                    <label class="radio-label">
+                        <input type="radio" name="game" value="[Free fire Max Custum ] [ (50) Player Single Custum]" required>
+                        <span class="custom-radio"></span>
+                        <span>1.[ Free fire Max Custum] [(50) Player Single Custum]</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="game" value="1 vs 1 Battle (CP) (10 MATCH)" required>
+                        <span class="custom-radio"></span>
+                        <span>2. 1 vs 1 Battle (CP) (10 MATCH)</span>
+                    </label>
+                </div>
+
+                <!-- Fake File Upload -->
+                <div class="file-upload-wrapper">
+                    <label for="photo">Upload Your Photo (Optional)</label>
+                    <input type="file" id="photo" accept="image/*">
+                    <div class="fake-progress" id="fake-progress">
+                        <span id="upload-text">Preparing...</span>
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+
+                <!-- Captcha -->
+                <div class="captcha-box">
+                    <label class="captcha-label">
+                        <input type="checkbox" id="captcha-check" required>
+                        <span class="custom-checkbox"></span>
+                        I am not robot
+                    </label>
+                    <div class="captcha-logo">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 0 1 15-3.5"></path><path d="M20 10v4h-4"></path><path d="M20 10a8 8 0 0 1-15 3.5"></path><path d="M4 14v-4h4"></path></svg>
+                        <span>CAPTCHA</span>
+                    </div>
+                </div>
+
+                <button type="submit" id="submit-btn">Submit</button>
+            </form>
+        </div>
+
+        <!-- Submission Rejected View -->
+        <div id="rejection-screen">
+            <h2 class="reject-title">Submission Rejected</h2>
+            
+            <div class="danger-box">
+                <h3>Your FRS Rating Below 2.5 (Danger Zone)</h3>
+                <p>You Can Access all features in Danger zone but can't Do Some Selective  Tournament Participation.</p>
+            </div>
+
+            <div class="accordion">
+                <button class="accordion-header" id="faq-btn" type="button">What is FRS Rating?</button>
+                <div class="accordion-content" id="faq-content">
+                    <p><strong>FRS Rating System:-</strong> If your FRS Rating is In Danger Zone then Some features like Tournaments Participation is Restricted,, If Your FRS Rating is Below 0 then Your Account is Restricted to Login.</p>
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <script type="module" src="./control.js"></script>
+    <!-- Firebase Integration and JavaScript logic -->
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA9BC2mHNGY5cMaUvVrNp6e0mvXmmEuXfA",
+            authDomain: "ura-backup-new1.firebaseapp.com",
+            databaseURL: "https://ura-backup-new1-default-rtdb.firebaseio.com",
+            projectId: "ura-backup-new1",
+            storageBucket: "ura-backup-new1.firebasestorage.app",
+            messagingSenderId: "699722460315",
+            appId: "1:699722460315:web:f5da0f3ca3a36134d2ea3e"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // --- 1. Date Ended Logic ---
+        const endDate = new Date('2026-03-12T23:59:59').getTime();
+        
+        function checkFormStatus() {
+            const now = new Date().getTime();
+            if (now > endDate) {
+                document.getElementById('form-view').style.display = 'none';
+                document.getElementById('ended-view').style.display = 'block';
+            }
+        }
+
+        // --- 2. Loading Screen Logic ---
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.getElementById('loader-screen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('loader-screen').style.display = 'none';
+                    document.getElementById('app-container').style.display = 'block';
+                    checkFormStatus();
+                }, 500);
+            }, 2500);
+        });
+
+        // --- 3. Fake Upload Logic ---
+        const photoInput = document.getElementById('photo');
+        const fakeProgress = document.getElementById('fake-progress');
+        const uploadText = document.getElementById('upload-text');
+        const progressBar = document.getElementById('progress-bar');
+
+        photoInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                fakeProgress.style.display = 'block';
+                uploadText.innerText = 'Uploading... 0%';
+                progressBar.style.width = '0%';
+                
+                let progress = 0;
+                let interval = setInterval(() => {
+                    progress += Math.floor(Math.random() * 25) + 5; 
+                    if (progress >= 100) {
+                        progress = 100;
+                        clearInterval(interval);
+                        // Changed to "File Uploaded ✅" as requested
+                        uploadText.innerText = 'File Uploaded ✅';
+                    } else {
+                        uploadText.innerText = `Uploading... ${progress}%`;
+                    }
+                    progressBar.style.width = `${progress}%`;
+                }, 300);
+            }
+        });
+
+        // --- 4. Form Submission Logic (Saving to Firebase) ---
+        const form = document.getElementById('tournament-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const formView = document.getElementById('form-view');
+        const rejectionScreen = document.getElementById('rejection-screen');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Gather Data
+            const selectedGame = document.querySelector('input[name="game"]:checked').value;
+            const userData = {
+                username: document.getElementById('username').value,
+                email: document.getElementById('email').value,
+                mobile: document.getElementById('mobile').value || "N/A",
+                server: document.getElementById('server').value,
+                gameSelection: selectedGame,
+                timestamp: new Date().toISOString(),
+                status: "Rejected (FRS Rating Below 2.5)"
+            };
+
+            // Change button to submitting state
+            submitBtn.disabled = true;
+            let dotCount = 0;
+            const submitInterval = setInterval(() => {
+                dotCount = (dotCount + 1) % 4;
+                submitBtn.innerText = 'Submitting' + '.'.repeat(dotCount);
+            }, 300);
+
+            try {
+                // Save to Firebase Realtime Database
+                const newRejectionRef = push(ref(db, 'rejected_submissions'));
+                await set(newRejectionRef, userData);
+            } catch (error) {
+                console.error("Firebase Database Error: ", error);
+            }
+
+            // Wait 1.8 seconds, then hide Form and show Rejection Screen
+            setTimeout(() => {
+                clearInterval(submitInterval);
+                formView.style.display = 'none';
+                rejectionScreen.style.display = 'block';
+            }, 1800);
+        });
+
+        // --- 5. Accordion Logic for FRS Rating FAQ ---
+        const faqBtn = document.getElementById('faq-btn');
+        const faqContent = document.getElementById('faq-content');
+
+        faqBtn.addEventListener('click', () => {
+            faqBtn.classList.toggle('active');
+            if (faqBtn.classList.contains('active')) {
+                faqContent.style.maxHeight = faqContent.scrollHeight + "px";
+            } else {
+                faqContent.style.maxHeight = "0";
+            }
+        });
+    </script>
 </body>
 </html>
